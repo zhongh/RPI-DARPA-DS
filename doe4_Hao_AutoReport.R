@@ -10,12 +10,12 @@ setwd("/Users/Hao/Projects/RPI-DARPA-DS/")
 ## Install necessary packages
 # install.packages("ipred")
 # install.packages("party")
-install.packages("randomForest")
-install.packages("e1071")
-install.packages("ggplot2")
+# install.packages("randomForest")
+# install.packages("e1071")
+# install.packages("ggplot2")
 # install.packages("caret")
 # install.packages("scatterplot3d")
-install.packages("kernlab")
+# install.packages("kernlab")
 
 ## 1. Data Import and Cleaning
 
@@ -105,7 +105,7 @@ table(mydata$y, mydata$Contaminate.Type)
 table(mydata$Contaminate.Type, mydata$Surface.Preperation)
 
 # X <- mydata[independent.variables.1]
-  
+
 # Plot independent variables and Gic (y) against each other
 plot(mydata[, c(independent.variables.1, "Gic")])   
 plot(mydata[, c(independent.variables.2, "Gic")]) # Without 2 categorical variables
@@ -307,119 +307,5 @@ table(svm.pred, mydata.test$y)
 #
 
 
-
-
-
-
-## (+) https://www.youtube.com/watch?v=Od8gfNOOS9o
-X <- mydata[c(independent.variables.2, "Gic")]
-X <- subset(mydata, select = -c(Surface.Preperation, Contaminate.Type, y))
-summary(X)
-cov(X)  
-pcal <- princomp(X, scores = TRUE, cor = TRUE)
-summary(pcal)
-loadings(pcal)
-plot(pcal)
-screeplot(pcal, type = "line", main = "Screen plot")
-
-
-## Histogram 
-# Just want to see the overall distribution, if any small number of outliers, etc
-library()
-hist(mydata$Gic)
-hist(mydata$Adhesive.Out.Time)
-hist(mydata$Contamination.Amount)
-hist(mydata$Prep..to.Bond.Time)
-
-## Scatterplot and clusters
-scatterplot3d(mydata[, c("Adhesive.Out.Time", "Prep..to.Bond.Time", "Contamination.Amount")], color = as.numeric(mydata$Contaminate.Type), pch = as.numeric(mydata$Surface.Preperation))
-scatterplot3d(mydata[, c("Gic", "Prep..to.Bond.Time", "Contamination.Amount")], color = as.numeric(mydata$Contaminate.Type), pch = as.numeric(mydata$Surface.Preperation))
-
-## (+) Interactive 3D plot
-install.packages("rgl")
-library(rgl)
-plot3d(cbind(Adhesive.Out.Time, Prep..to.Bond.Time, Contamination.Amount), col = as.numeric(y), size = 10)
-plot3d(cbind(X.Cohesive.1, X.Interfacial.1, X.Laminate.1), col = Gic)
-
-## (+) Factor analysis
-factanal(mydata[, c(independent.variables.2, "Gic")], factors = 1)
-
-
-# kmeans
-km1 <- kmeans(mydata[, c("Gic", "Prep..to.Bond.Time", "Contamination.Amount")], centers = 6)
-scatterplot3d(mydata[, c("Gic", "Prep..to.Bond.Time", "Contamination.Amount")],
-              color = km1$cluster, 
-              pch = as.numeric(mydata$Contaminate.Type))
-plot3d(mydata[, c("Gic", "Prep..to.Bond.Time", "Contamination.Amount")],
-              col = km1$cluster, 
-              pch = as.numeric(mydata$Contaminate.Type))
-
-km2 <- kmeans(mydata[, c("Prep..to.Bond.Time", "Contamination.Amount")], centers = 6)
-plot(mydata[, c("Prep..to.Bond.Time", "Contamination.Amount")], 
-     col = km2$cluster, pch = as.numeric(mydata$y))
-
-km3 <- kmeans(mydata[, c("Gic", "Prep..to.Bond.Time", "Contamination.Amount")], centers = 6)
-scatterplot3d(mydata[, c("Gic", "Prep..to.Bond.Time", "Contamination.Amount")], color = km1$cluster)
-plot3d(mydata[, c("Gic", "Prep..to.Bond.Time", "Contamination.Amount")], col = km1$cluster)
-
-
-#library(mclust)
-install.packages("mclust")
-library(mclust)
-fit <- Mclust(mydata[, c("Gic", "Prep..to.Bond.Time", "Contamination.Amount", "Contaminate.Type", "Surface.Preperation")])
-plot(fit) # plot results 
-summary(fit)
-
-#########################################################################
-#########################################################################
-
-## Construct training and testing subsets
-set.seed(8341)
-samp <- sample(nrow(mydata), 0.6 * nrow(mydata))
-mydata.train <- mydata[samp, ]
-mydata.test <- mydata[-samp, ]
-
-## Make formulas
-# y ~ Adhesive.Out.Time + Prep..to.Bond.Time + Surface.Preperation + Contaminate.Type + Contamination.Amount
-formula.1 <- as.formula(paste("y", paste(independent.variables.1, collapse = " + "), sep = " ~ "))
-# y ~ Adhesive.Out.Time + Prep..to.Bond.Time + Contamination.Amount
-formula.2 <- as.formula(paste("y", paste(independent.variables.2, collapse = " + "), sep = " ~ "))
-# y ~ Prep..to.Bond.Time + Surface.Preperation + Contaminate.Type + Contamination.Amount
-formula.3 <- as.formula(paste("y", paste(independent.variables.3, collapse = " + "), sep = " ~ "))
-
-## Random Forest (randomForest)
-#  Model used: formula.1 - all 5 variables
-set.seed(3605)
-mydata.rf.1 <- randomForest(formula.1, data = mydata.train)
-varImp(mydata.rf.1); varImpPlot(mydata.rf.1)
-plot(mydata.rf.1); legend("top", colnames(mydata.rf.1$err.rate), col=1:4, cex=0.8, fill=1:4)
-mydata.pred <- predict(mydata.rf.1, newdata = mydata.test)
-confusionMatrix(data = mydata.pred, reference = mydata.test$y)
-
-## Conditional importance forest (cforest)
-#  Model used: formula.1 - all 5 variables
-set.seed(555)
-mydata.cforest.1 <- cforest(formula.1, data = mydata.train, control = cforest_unbiased(ntree = 500, mtry = 2), )
-varImp(mydata.cforest.1); varImpPlot(mydata.cforest.1)
-mydata.cforest.pred.1 <- predict(mydata.cforest.1, newdata = mydata.test)
-confusionMatrix(data = mydata.cforest.pred.1, reference = mydata.test$y)
-
-## Random Forest (randomForest) without Categorical Var
-#  Model used: formula.2 - only the 3 numerical variables
-set.seed(3605)
-mydata.rf.2 <- randomForest(formula.2, data = mydata.train)
-varImp(mydata.rf.2); varImpPlot(mydata.rf.2)
-plot(mydata.rf.2); legend("top", colnames(mydata.rf.2$err.rate), col=1:4, cex=0.8, fill=1:4)
-mydata.pred.2 <- predict(mydata.rf.2, newdata = mydata.test)
-show(formula.2)
-confusionMatrix(data = mydata.pred.2, reference = mydata.test$y)
-
-## Decision tree (ctree)
-#  Model used: formula.1 - all 5 variables
-
-set.seed(3345)
-mydata.ctree.1 <- ctree(formula.1, data = mydata.train, controls=cforest_control(mtry=2, mincriterion=0))
-plot(mydata.ctree.1, type="simple")
-confusionMatrix(predict(mydata.ctree.1, newdata = mydata.test), reference = mydata.test$y)
 
 
