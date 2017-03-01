@@ -1,0 +1,372 @@
+---
+title: "Classifying Gic"
+author: "Hao Zhong"
+output:
+  html_document: default
+  html_notebook: default
+  pdf_document: default
+---
+
+--------------------------------------------------------------------------------
+
+# 0. Getting Started
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Execute a single line or selected lines of codes by pressing *Cmd+Enter*. 
+
+Execute a code chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+Start by setting working directory (please configure the path to your setting)
+
+```{r}
+setwd("/Users/Hao/Projects/RPI-DARPA-DS/")
+```
+
+and installing required packages
+
+```{r results='hide', eval=FALSE, echo=TRUE}
+install.packages("randomForest")
+install.packages("e1071")
+install.packages("ggplot2")
+install.packages("GGally")
+install.packages("reshape2")
+install.packages("kernlab")
+install.packages("caret") # confusionMatrix
+```
+
+--------------------------------------------------------------------------------
+
+# 1. Data Import and Cleaning
+
+## 1.1 Data Import
+
+```{r echo=TRUE, eval=TRUE}
+mydata <- read.csv("Fake Data DOE_IV 1_24_2017.csv", header = TRUE, stringsAsFactors = FALSE)
+```
+
+## 1.2 Data Preprocessing
+
+Define a few lists of variables of interests for further use:
+
+```{r}
+# Categorical and numerical variables
+independent.variables.cat <- c("Surface.Preparation", "Contaminate.Type")
+independent.variables.num <- c("Adhesive.Out.Time", "Prep..to.Bond.Time", "Contamination.Amount")
+# All 5 variables
+independent.variables.all <- c(independent.variables.cat, independent.variables.num)
+```
+
+Use `str()` and `summary()` to look at variable types and summary statistics; use `head()` or `tail()` to take a peep at the data.
+
+```{r eval=FALSE, tidy=TRUE}
+str(mydata[c("Adhesive.Out.Time", "Prep..to.Bond.Time", "Contamination.Amount", "Surface.Preperation", "Contaminate.Type", "Gic")])
+summary(mydata[c("Adhesive.Out.Time", "Prep..to.Bond.Time", "Contamination.Amount", "Surface.Preperation", "Contaminate.Type", "Gic")])
+head(mydata[, c("Adhesive.Out.Time", "Prep..to.Bond.Time", "Contamination.Amount", "Surface.Preperation", "Contaminate.Type", "Gic")])
+tail(mydata[, c("Adhesive.Out.Time", "Prep..to.Bond.Time", "Contamination.Amount", "Surface.Preperation", "Contaminate.Type", "Gic")])
+```
+
+Based on our immediate observation, we will
+
+  * impose correct data types to all interested variables, 
+  * create a new factor *y* representing *Gic* as *High* and *Low*,
+  * omit NA's, and 
+  * fix weird NEGATIVE values observed in Prep..to.Bond.Time
+  
+```{r warning=FALSE}
+# Correct data types
+mydata$Adhesive.Out.Time <- as.numeric(mydata$Adhesive.Out.Time)
+mydata$Prep..to.Bond.Time <- as.numeric(mydata$Prep..to.Bond.Time)
+mydata$Surface.Preperation <- as.factor(mydata$Surface.Preperation)
+mydata$Contaminate.Type <- as.factor(mydata$Contaminate.Type)
+mydata$Contamination.Amount <- as.numeric(mydata$Contamination.Amount)
+# Gic -> y = 'LowGic' or 'HighGic'
+mydata$y <- as.factor(ifelse(mydata$Gic < 5, 'LowGic', 'HighGic'))
+# Omit NA's
+mydata <- na.omit(mydata)
+# (*) FIX weird negative values observed in Prep..to.Bond.Time
+mydata$Prep..to.Bond.Time <- abs(mydata$Prep..to.Bond.Time)
+# Add a duplicate column of Surface.Preperation with correct column name
+mydata$Surface.Preparation <- mydata$Surface.Preperation
+```
+
+--------------------------------------------------------------------------------
+
+# 2. Data Exploration
+
+```{r echo=FALSE}
+library(lattice)
+library(ggplot2)
+# attach(mydata)
+```
+
+Use `table()` to build summary tables on counts factor(s):
+
+```{r eval=TRUE}
+# Use table() to build a table of the counts at each combination of the factors
+table(mydata$y, mydata$Surface.Preparation)
+table(mydata$y, mydata$Contaminate.Type)
+table(mydata$Contaminate.Type, mydata$Surface.Preparation)
+```
+
+Use `plot()` to plot all variables against each other in the dataset passed in as its argument:
+```{r eval=TRUE}
+# Plot independent variables and Gic (y) against each other
+plot(mydata[, c(independent.variables.all, "Gic")], main = "All Variables") 
+plot(mydata[, c(independent.variables.cat, "Gic")], main = "Numerical Variables, Gic, and y")
+plot(mydata[, c(independent.variables.num, "Gic", "y")], main = "Categorical Variables, Gic, and y")
+```
+
+## 2.2 Categorical variables
+
+#### We have 2 categorical variables, `Surface.Preparation` and `Contamination.Type`. 
+#### Use barcharts to visualize distributions of categorical variables.
+
+```{r echo=FALSE}
+ggplot(mydata) + geom_bar(aes(x = Surface.Preparation))
+ggplot(mydata) + geom_bar(aes(x = Contaminate.Type))
+```
+
+#### Use color to further visualize how each bar is made up by another factor
+
+```{r echo=FALSE}
+# y (High/Low Gic) as colored sections in the bars 
+ggplot(mydata) + geom_bar(aes(x = Surface.Preparation, fill = y))
+ggplot(mydata) + geom_bar(aes(x = Contaminate.Type, fill = y))
+# Contaminate.Type or Surface.Preparation as colored sections in the bars 
+ggplot(mydata) + geom_bar(aes(x = Surface.Preparation, fill = Contaminate.Type))
+ggplot(mydata) + geom_bar(aes(x = Contaminate.Type, fill = Surface.Preparation))
+```
+
+#### We also want to visualize how each bar is made up by another numerical variable. In this case, use violin plot.
+
+```{r echo=FALSE}
+# On Gic
+ggplot(mydata) + geom_violin(aes(x = Surface.Preparation, y = Gic, fill = Surface.Preparation))
+ggplot(mydata) + geom_violin(aes(x = Contaminate.Type, y = Gic, fill = Contaminate.Type))
+#
+# On other 3 independent numerical variables (No pretty results)
+# ggplot(mydata) + geom_violin(aes(x = Surface.Preparation, y = Contamination.Amount, fill = Surface.Preparation))
+# ggplot(mydata) + geom_violin(aes(x = Contaminate.Type, y = Contamination.Amount, fill = Contaminate.Type))
+# ggplot(mydata) + geom_violin(aes(x = Surface.Preparation, y = Adhesive.Out.Time, fill = Surface.Preparation))
+# ggplot(mydata) + geom_violin(aes(x = Contaminate.Type, y = Adhesive.Out.Time, fill = Contaminate.Type))
+# ggplot(mydata) + geom_violin(aes(x = Surface.Preparation, y = Prep..to.Bond.Time, fill = Surface.Preparation))
+# ggplot(mydata) + geom_violin(aes(x = Contaminate.Type, y = Prep..to.Bond.Time, fill = Contaminate.Type))
+```
+
+#### Multiple facets by yet another, a 3rd factor
+
+```{r echo=FALSE, out.width="8\\linewidth"}
+ggplot(mydata) + geom_bar(aes(x = Surface.Preparation, fill = y)) + facet_wrap(~ Contaminate.Type) + ggtitle("Surface Preparation by Contaminate Type")
+ggplot(mydata) + geom_bar(aes(x = Contaminate.Type, fill = y)) + facet_wrap(~ Surface.Preparation) + ggtitle("Contaminate Type by Surface Preparation")
+# 
+ggplot(mydata) + geom_bar(aes(x = Contaminate.Type, fill = Surface.Preparation)) + facet_wrap(~ y) + ggtitle("Contaminate Type by High/Low Gic")
+ggplot(mydata) + geom_bar(aes(x = Surface.Preparation, fill = Contaminate.Type)) + facet_wrap(~ y) + ggtitle("Surface Preparation  by High/Low Gic")
+#
+ggplot(mydata) + geom_violin(aes(x = Surface.Preparation, y = Gic, fill = Surface.Preparation)) + facet_wrap(~ Contaminate.Type) + ggtitle("Surface Preparation vs Gic, by Contaminate Type")
+ggplot(mydata) + geom_violin(aes(x = Contaminate.Type, y = Gic, fill = Contaminate.Type)) + facet_wrap(~ Surface.Preparation) + ggtitle("Contaminate Type vs Gic, by Surface Preparation")
+```
+#### Workflow Summary:
+1) Barplot on one categorical variable
+2) Represent how each bar is made up by another variable
+    - second variable is factor: add fill color in barplot
+    - second variable is numerical: as the y-axis in violin plot
+3) Make multiple facets by a 3rd (even a 4th, if it makes sense yet still tidy) variable (factor)
+
+## 2.3 Numerical variables
+
+#### For numerical variables we start with histogram instead of barplot. We may also use a density plot to visualize the distribution implied by the histogram, although this could be intuitively misleading if abused.
+
+#### `Adhesive.Out.Time`
+
+```{r echo=FALSE}
+# Adhesive.Out.Time
+ggplot(mydata) + geom_histogram(aes(x = Adhesive.Out.Time), bins = 30)
+#
+ggplot(mydata) + geom_histogram(aes(x = Adhesive.Out.Time, fill = y), bins = 30)
+ggplot(mydata) + geom_histogram(aes(x = Adhesive.Out.Time, fill = Surface.Preparation), bins = 30)
+ggplot(mydata) + geom_histogram(aes(x = Adhesive.Out.Time, fill = Contaminate.Type), bins = 30)
+#
+ggplot(mydata) + geom_histogram(aes(x = Adhesive.Out.Time, fill = y), bins = 30) + facet_wrap(~ Contaminate.Type)
+ggplot(mydata) + geom_histogram(aes(x = Adhesive.Out.Time, fill = y), bins = 30) + facet_wrap(~ Surface.Preparation)
+ggplot(mydata) + geom_histogram(aes(x = Adhesive.Out.Time, fill = y), bins = 30) + facet_wrap(~ Surface.Preparation * Contaminate.Type)
+ggplot(mydata) + geom_histogram(aes(x = Adhesive.Out.Time, fill = Surface.Preparation), bins = 30) + facet_wrap(~ Contaminate.Type)
+ggplot(mydata) + geom_histogram(aes(x = Adhesive.Out.Time, fill = Contaminate.Type), bins = 30) + facet_wrap(~ Surface.Preparation)
+ggplot(mydata) + geom_histogram(aes(x = Adhesive.Out.Time, fill = Surface.Preparation), bins = 30) + facet_wrap(~ Contaminate.Type * y)
+ggplot(mydata) + geom_histogram(aes(x = Adhesive.Out.Time, fill = Contaminate.Type), bins = 30) + facet_wrap(~ Surface.Preparation * y)
+```
+
+#### `Prep..to.Bond.Time`
+
+```{r echo=FALSE}
+ggplot(mydata) + geom_histogram(aes(x = Prep..to.Bond.Time), bins = 30)
+#
+ggplot(mydata) + geom_histogram(aes(x = Prep..to.Bond.Time, fill = y), bins = 30)
+ggplot(mydata) + geom_histogram(aes(x = Prep..to.Bond.Time, fill = Contaminate.Type), bins = 30)
+ggplot(mydata) + geom_histogram(aes(x = Prep..to.Bond.Time, fill = Surface.Preparation), bins = 30)
+ggplot(mydata) + geom_density(aes(x = Prep..to.Bond.Time, fill = y), alpha = 0.5)
+ggplot(mydata) + geom_density(aes(x = Prep..to.Bond.Time, fill = Contaminate.Type), alpha = 0.5)
+ggplot(mydata) + geom_density(aes(x = Prep..to.Bond.Time, fill = Surface.Preparation), alpha = 0.5)
+#
+ggplot(mydata) + geom_histogram(aes(x = Prep..to.Bond.Time, fill = y), bins = 30) + facet_wrap(~ Surface.Preparation, scales = "free")
+ggplot(mydata) + geom_histogram(aes(x = Prep..to.Bond.Time, fill = y), bins = 30) + facet_wrap(~ Contaminate.Type, scales = "free")
+ggplot(mydata) + geom_histogram(aes(x = Prep..to.Bond.Time, fill = y), bins = 30) + facet_wrap(~ Surface.Preparation * Contaminate.Type, scales = "free")
+ggplot(mydata) + geom_histogram(aes(x = Prep..to.Bond.Time, fill = Contaminate.Type), bins = 30) + facet_wrap(~ Surface.Preparation, scales = "free")
+ggplot(mydata) + geom_histogram(aes(x = Prep..to.Bond.Time, fill = Surface.Preparation), bins = 30) + facet_wrap(~ Contaminate.Type, scales = "free")
+ggplot(mydata) + geom_histogram(aes(x = Prep..to.Bond.Time, fill = Contaminate.Type), bins = 30) + facet_wrap(~ Surface.Preparation * y, scales = "free")
+ggplot(mydata) + geom_histogram(aes(x = Prep..to.Bond.Time, fill = Surface.Preparation), bins = 30) + facet_wrap(~ Contaminate.Type * y, scales = "free")
+#
+# ggplot(mydata) + geom_density(aes(x = Prep..to.Bond.Time, fill = y), alpha = 0.5) + facet_wrap(~ Surface.Preparation, scales = "free")
+# ggplot(mydata) + geom_density(aes(x = Prep..to.Bond.Time, fill = y), alpha = 0.5) + facet_wrap(~ Contaminate.Type, scales = "free")
+# ggplot(mydata) + geom_density(aes(x = Prep..to.Bond.Time, fill = y), alpha = 0.5) + facet_wrap(~ Surface.Preparation * Contaminate.Type, scales = "free")
+# ggplot(mydata) + geom_density(aes(x = Prep..to.Bond.Time, fill = Contaminate.Type), alpha = 0.5) + facet_wrap(~ Surface.Preparation, scales = "free")
+# ggplot(mydata) + geom_density(aes(x = Prep..to.Bond.Time, fill = Surface.Preparation), alpha = 0.5) + facet_wrap(~ Contaminate.Type, scales = "free")
+# ggplot(mydata) + geom_density(aes(x = Prep..to.Bond.Time, fill = Contaminate.Type), alpha = 0.5) + facet_wrap(~ Surface.Preparation * y, scales = "free")
+# ggplot(mydata) + geom_density(aes(x = Prep..to.Bond.Time, fill = Surface.Preparation), alpha = 0.5) + facet_wrap(~ Contaminate.Type * y, scales = "free")
+#
+```
+
+#### `Contamination.Amount`
+
+```{r echo=FALSE}
+ggplot(mydata) + geom_histogram(aes(x = Contamination.Amount), bins = 30)
+#
+ggplot(mydata) + geom_histogram(aes(x = Contamination.Amount, fill = y), bins = 30)
+ggplot(mydata) + geom_histogram(aes(x = Contamination.Amount, fill = Contaminate.Type), bins = 30)
+ggplot(mydata) + geom_histogram(aes(x = Contamination.Amount, fill = Surface.Preparation), bins = 30)
+ggplot(mydata) + geom_density(aes(x = Contamination.Amount, fill = y), alpha = 0.5)
+ggplot(mydata) + geom_density(aes(x = Contamination.Amount, fill = Contaminate.Type), alpha = 0.5)
+ggplot(mydata) + geom_density(aes(x = Contamination.Amount, fill = Surface.Preparation), alpha = 0.5)
+#
+ggplot(mydata) + geom_histogram(aes(x = Contamination.Amount, fill = y), bins = 30) + facet_wrap(~ Surface.Preparation, scales = "free")
+ggplot(mydata) + geom_histogram(aes(x = Contamination.Amount, fill = y), bins = 30) + facet_wrap(~ Contaminate.Type, scales = "free")
+ggplot(mydata) + geom_histogram(aes(x = Contamination.Amount, fill = y), bins = 30) + facet_wrap(~ Surface.Preparation * Contaminate.Type, scales = "free")
+ggplot(mydata) + geom_histogram(aes(x = Contamination.Amount, fill = Contaminate.Type), bins = 30) + facet_wrap(~ Surface.Preparation, scales = "free")
+ggplot(mydata) + geom_histogram(aes(x = Contamination.Amount, fill = Surface.Preparation), bins = 30) + facet_wrap(~ Contaminate.Type, scales = "free")
+ggplot(mydata) + geom_histogram(aes(x = Contamination.Amount, fill = Contaminate.Type), bins = 30) + facet_wrap(~ Surface.Preparation * y, scales = "free")
+ggplot(mydata) + geom_histogram(aes(x = Contamination.Amount, fill = Surface.Preparation), bins = 30) + facet_wrap(~ Contaminate.Type * y, scales = "free")
+#
+# ggplot(mydata) + geom_density(aes(x = Contamination.Amount, fill = y), alpha = 0.5) + facet_wrap(~ Surface.Preparation, scales = "free")
+# ggplot(mydata) + geom_density(aes(x = Contamination.Amount, fill = y), alpha = 0.5) + facet_wrap(~ Contaminate.Type, scales = "free")
+# ggplot(mydata) + geom_density(aes(x = Contamination.Amount, fill = y), alpha = 0.5) + facet_wrap(~ Surface.Preparation * Contaminate.Type, scales = "free")
+# ggplot(mydata) + geom_density(aes(x = Contamination.Amount, fill = Contaminate.Type), alpha = 0.5) + facet_wrap(~ Surface.Preparation, scales = "free")
+# ggplot(mydata) + geom_density(aes(x = Contamination.Amount, fill = Surface.Preparation), alpha = 0.5) + facet_wrap(~ Contaminate.Type, scales = "free")
+# ggplot(mydata) + geom_density(aes(x = Contamination.Amount, fill = Contaminate.Type), alpha = 0.5) + facet_wrap(~ Surface.Preparation * y, scales = "free")
+# ggplot(mydata) + geom_density(aes(x = Contamination.Amount, fill = Surface.Preparation), alpha = 0.5) + facet_wrap(~ Contaminate.Type * y, scales = "free")
+#
+```
+
+#### `Gic`
+
+```{r echo=FALSE}
+ggplot(mydata) + geom_histogram(aes(x = Gic), bins = 30)
+#
+ggplot(mydata) + geom_histogram(aes(x = Gic, fill = Contaminate.Type), bins = 30)
+ggplot(mydata) + geom_histogram(aes(x = Gic, fill = Surface.Preparation), bins = 30)
+ggplot(mydata) + geom_density(aes(x = Gic, fill = Contaminate.Type), alpha = 0.5)
+ggplot(mydata) + geom_density(aes(x = Gic, fill = Surface.Preparation), alpha = 0.5)
+#
+ggplot(mydata) + geom_histogram(aes(x = Gic, fill = Contaminate.Type), bins = 30) + facet_wrap(~ Surface.Preparation, scales = "free")
+ggplot(mydata) + geom_histogram(aes(x = Gic, fill = Surface.Preparation), bins = 30) + facet_wrap(~ Contaminate.Type, scales = "free")
+ggplot(mydata) + geom_histogram(aes(x = Gic, fill = Contaminate.Type), bins = 30) + facet_wrap(~ Surface.Preparation * y, scales = "free")
+ggplot(mydata) + geom_histogram(aes(x = Gic, fill = Surface.Preparation), bins = 30) + facet_wrap(~ Contaminate.Type * y, scales = "free")
+#
+# ggplot(mydata) + geom_density(aes(x = Gic, fill = Contaminate.Type), alpha = 0.5) + facet_wrap(~ Surface.Preparation, scales = "free")
+# ggplot(mydata) + geom_density(aes(x = Gic, fill = Surface.Preparation), alpha = 0.5) + facet_wrap(~ Contaminate.Type, scales = "free")
+# ggplot(mydata) + geom_density(aes(x = Gic, fill = Contaminate.Type), alpha = 0.5) + facet_wrap(~ Surface.Preparation * y, scales = "free")
+# ggplot(mydata) + geom_density(aes(x = Gic, fill = Surface.Preparation), alpha = 0.5) + facet_wrap(~ Contaminate.Type * y, scales = "free")
+```
+
+## 2.4 More patterns, correlations, and etc
+
+#### 3 numerical variables faceted by both Contaminate.Type and Surface.Preparation
+
+```{r echo=FALSE}
+ggplot(mydata) + geom_histogram(aes(x = Contamination.Amount, fill = y), bins = 30) + facet_wrap(~ Contaminate.Type + Surface.Preparation, scales = "free")
+ggplot(mydata) + geom_histogram(aes(x = Adhesive.Out.Time, fill = y), bins = 30) + facet_wrap(~ Contaminate.Type + Surface.Preparation, scales = "free")
+ggplot(mydata) + geom_histogram(aes(x = Prep..to.Bond.Time, fill = y), bins = 30) + facet_wrap(~ Contaminate.Type + Surface.Preparation, scales = "free")
+```
+
+#### 3 numerical variables vs Gic (and y)
+
+```{r echo=FALSE}
+ggplot(mydata) + geom_jitter(aes(x = Contamination.Amount, y = Gic, col = y)) + facet_wrap(~ Contaminate.Type + Surface.Preparation, scales = "free")
+ggplot(mydata) + geom_jitter(aes(x = Adhesive.Out.Time, y = Gic, col = y)) + facet_wrap(~ Contaminate.Type + Surface.Preparation, scales = "free")
+ggplot(mydata) + geom_jitter(aes(x = Prep..to.Bond.Time, y = Gic, col = y)) + facet_wrap(~ Contaminate.Type + Surface.Preparation, scales = "free")
+```
+
+#### Correlation overall
+```{r}
+library(GGally)
+library(reshape2)
+```
+
+```{r echo=FALSE}
+ggcorr(mydata)
+ggcorr(mydata[, independent.variables.num])
+# ggplot(data = melt(cor(mydata[, independent.variables.num])), aes(x=Var1, y=Var2, fill=value)) + geom_tile()
+```
+
+#### Correlation in each subset combining Suraface Prep and Contamination Type
+
+```{r echo=FALSE, error=TRUE}
+for (i in levels(mydata$Surface.Preparation)) {
+  for (j in levels(mydata$Contaminate.Type)) {
+    cat(paste("\nSurface.Preparation =", i, "and Contaminate.Type =", j, ":\n"))
+    print(cor(mydata[which(mydata$Surface.Preparation==i & mydata$Contaminate.Type==j), independent.variables.num], use = "everything"))
+    # print(ggplot(data = melt(cor(mydata[which(mydata$Surface.Preparation==i & mydata$Contaminate.Type==j), independent.variables.num])), aes(x=Var1, y=Var2, fill=value)) + geom_tile())
+    # print(ggcorr(mydata[which(mydata$Surface.Preparation==i & mydata$Contaminate.Type==j), independent.variables.num]))
+    }
+}
+```
+
+## 2.5 3D visualizations
+
+
+
+#
+#
+# 3. Classifying *Gic* with Support Vector Machine
+#
+#
+## 3.1 Construction patterns of the experimental data
+#
+The experiment is so designed that for each combination of **Surface Preparation** and **Contaminate Type**, 12 experiments (in most of cases except for "Fre" or something) are conducted with variations in other 3 numerical variables. It is observable from the data that for each 12 experiments sharing the same **Surface Preparation** and **Contaminate Type**, 6 of them always have a higher **Contamination Amount** while the other 6 have a lower value. Let's visualize this observation.
+
+```{r results='hide'}
+library(caret)
+library(kernlab)
+```
+
+#### Training
+
+```{r echo=FALSE}
+# Construct training and testing subsets
+set.seed(8341)
+samp <- sample(nrow(mydata), 0.6 * nrow(mydata))
+mydata.train <- mydata[samp, c(independent.variables.all, "y")]
+mydata.test <- mydata[-samp, c(independent.variables.all, "y")]
+#
+svm.model <- ksvm(y ~ ., data = mydata.train)
+print(svm.model)
+# plot(svm.model, data = mydata.train)
+```
+
+#### Prediction
+
+```{r echo=FALSE}
+svm.pred <- predict(svm.model, mydata.test)
+table(svm.pred, mydata.test$y)
+confusionMatrix(svm.pred, mydata.test$y)
+```
+
+#### Error from cross-validation
+```{r echo=FALSE}
+svm.model <- ksvm(y ~ ., data = rbind(mydata.train, mydata.test), cross=50)
+print(svm.model)
+# plot(svm.model, data = mydata.train)
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file).
