@@ -4,6 +4,7 @@
 # Load packages
 library(rstudioapi)
 library(ggplot2)
+library(GGally)
 
 # 
 # Data Import and Preparation
@@ -19,8 +20,8 @@ source("Lockheed.R")
 # 
 
 # Use table() to build a table of the counts at each combination of the factors
-table(y, mydata$Surface.Preparation)
-table(y, mydata$Contaminate.Type)
+# table(y, mydata$Surface.Preparation)
+# table(y, mydata$Contaminate.Type)
 table(mydata$Contaminate.Type, mydata$Surface.Preparation)
 
 # Parallel coordinates plot
@@ -31,6 +32,6 @@ ggparcoord(mydata.scaled, columns = c(1,2,3,6), groupColumn = "Contaminate.Type"
 ggparcoord(mydata.scaled, columns = c(1,2,3,6), groupColumn = "Surface.Preparation", scale = 'globalminmax') + facet_wrap(~ Contaminate.Type)
 # Option 2:
 # http://www.buildingwidgets.com/blog/2015/1/30/week-04-interactive-parallel-coordinates-1
-devtools::install_github("timelyportfolio/parcoords")
+# devtools::install_github("timelyportfolio/parcoords")
 library(parcoords)
 parcoords(mydata, rownames = FALSE, brushMode = "2D-strums", queue = T, color = list(colorBy="Surface.Preparation", colorScale=htmlwidgets::JS('d3.scale.category10()')))
