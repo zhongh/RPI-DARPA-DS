@@ -2,8 +2,8 @@
 title: "Classifying Gic"
 author: "Hao Zhong"
 output:
-  html_document: default
   html_notebook: default
+  html_document: default
   pdf_document: default
 ---
 
@@ -41,53 +41,8 @@ install.packages("caret") # confusionMatrix
 
 ## 1.1 Data Import
 
-```{r echo=TRUE, eval=TRUE}
-mydata <- read.csv("Fake Data DOE_IV 1_24_2017.csv", header = TRUE, stringsAsFactors = FALSE)
-```
-
-## 1.2 Data Preprocessing
-
-Define a few lists of variables of interests for further use:
-
 ```{r}
-# Categorical and numerical variables
-independent.variables.cat <- c("Surface.Preparation", "Contaminate.Type")
-independent.variables.num <- c("Adhesive.Out.Time", "Prep..to.Bond.Time", "Contamination.Amount")
-# All 5 variables
-independent.variables.all <- c(independent.variables.cat, independent.variables.num)
-```
-
-Use `str()` and `summary()` to look at variable types and summary statistics; use `head()` or `tail()` to take a peep at the data.
-
-```{r eval=FALSE, tidy=TRUE}
-str(mydata[c("Adhesive.Out.Time", "Prep..to.Bond.Time", "Contamination.Amount", "Surface.Preperation", "Contaminate.Type", "Gic")])
-summary(mydata[c("Adhesive.Out.Time", "Prep..to.Bond.Time", "Contamination.Amount", "Surface.Preperation", "Contaminate.Type", "Gic")])
-head(mydata[, c("Adhesive.Out.Time", "Prep..to.Bond.Time", "Contamination.Amount", "Surface.Preperation", "Contaminate.Type", "Gic")])
-tail(mydata[, c("Adhesive.Out.Time", "Prep..to.Bond.Time", "Contamination.Amount", "Surface.Preperation", "Contaminate.Type", "Gic")])
-```
-
-Based on our immediate observation, we will
-
-  * impose correct data types to all interested variables, 
-  * create a new factor *y* representing *Gic* as *High* and *Low*,
-  * omit NA's, and 
-  * fix weird NEGATIVE values observed in Prep..to.Bond.Time
-  
-```{r warning=FALSE}
-# Correct data types
-mydata$Adhesive.Out.Time <- as.numeric(mydata$Adhesive.Out.Time)
-mydata$Prep..to.Bond.Time <- as.numeric(mydata$Prep..to.Bond.Time)
-mydata$Surface.Preperation <- as.factor(mydata$Surface.Preperation)
-mydata$Contaminate.Type <- as.factor(mydata$Contaminate.Type)
-mydata$Contamination.Amount <- as.numeric(mydata$Contamination.Amount)
-# Gic -> y = 'LowGic' or 'HighGic'
-mydata$y <- as.factor(ifelse(mydata$Gic < 5, 'LowGic', 'HighGic'))
-# Omit NA's
-mydata <- na.omit(mydata)
-# (*) FIX weird negative values observed in Prep..to.Bond.Time
-mydata$Prep..to.Bond.Time <- abs(mydata$Prep..to.Bond.Time)
-# Add a duplicate column of Surface.Preperation with correct column name
-mydata$Surface.Preparation <- mydata$Surface.Preperation
+source("Lockheed.R")
 ```
 
 --------------------------------------------------------------------------------
@@ -131,7 +86,7 @@ ggplot(mydata) + geom_bar(aes(x = Contaminate.Type))
 
 ```{r echo=FALSE}
 # y (High/Low Gic) as colored sections in the bars 
-ggplot(mydata) + geom_bar(aes(x = Surface.Preparation, fill = y))
+ggplot(mydata) + geom_bar(aes(x = Surface.Preparation, fill = as.factor(Gic)))
 ggplot(mydata) + geom_bar(aes(x = Contaminate.Type, fill = y))
 # Contaminate.Type or Surface.Preparation as colored sections in the bars 
 ggplot(mydata) + geom_bar(aes(x = Surface.Preparation, fill = Contaminate.Type))
@@ -366,6 +321,8 @@ svm.model <- ksvm(y ~ ., data = rbind(mydata.train, mydata.test), cross=50)
 print(svm.model)
 # plot(svm.model, data = mydata.train)
 ```
+
+
 
 Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
 
