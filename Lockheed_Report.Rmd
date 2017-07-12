@@ -59,17 +59,17 @@ Use `table()` to build summary tables on counts factor(s):
 
 ```{r eval=TRUE}
 # Use table() to build a table of the counts at each combination of the factors
-table(mydata$y, mydata$Surface.Preparation)
-table(mydata$y, mydata$Contaminate.Type)
+table(y, mydata$Surface.Preparation)
+table(y, mydata$Contaminate.Type)
 table(mydata$Contaminate.Type, mydata$Surface.Preparation)
 ```
 
 Use `plot()` to plot all variables against each other in the dataset passed in as its argument:
 ```{r eval=TRUE}
 # Plot independent variables and Gic (y) against each other
-plot(mydata[, c(independent.variables.all, "Gic")], main = "All Variables") 
-plot(mydata[, c(independent.variables.cat, "Gic")], main = "Numerical Variables, Gic, and y")
-plot(mydata[, c(independent.variables.num, "Gic", "y")], main = "Categorical Variables, Gic, and y")
+plot(mydata, main = "All Variables") 
+plot(mydata[, c(doe.cats, "Gic")], main = "Numerical Variables, Gic, and y")
+plot(mydata[, c(doe.nums, "Gic")], main = "Categorical Variables, Gic, and y")
 ```
 
 ## 2.2 Categorical variables
